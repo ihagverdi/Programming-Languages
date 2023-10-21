@@ -1,0 +1,107 @@
+%{
+    #include <string.h>
+    int no_lines = 1;
+    int no_comment_blocks = 0;
+%}
+
+DIGIT  [0-9]
+ALL_WHITESPACE [ \r\t\f\v]
+NEWLINE \n
+
+%x BlockComment
+%%
+<INITIAL>\/\* {
+    no_comment_blocks++; 
+    BEGIN(BlockComment);
+    }
+<BlockComment>\/\* {
+    no_comment_blocks++;
+    }
+<BlockComment>\*\/ {
+    no_comment_blocks--;
+    if(no_comment_blocks == 0) {
+        BEGIN(INITIAL);
+    }
+}
+
+<BlockComment>{NEWLINE} {no_lines++;}
+<BlockComment>. printf("");
+
+end({ALL_WHITESPACE}|{NEWLINE})+Mail {printf("%d_tENDMAIL\n",no_lines);}
+end({ALL_WHITESPACE}|{NEWLINE})+schedule {printf("%d_tENDSCHEDULE\n",no_lines);}
+Mail {printf("%d_tMAIL\n",no_lines);}
+send {printf("%d_tSEND\n",no_lines);}
+from {printf("%d_tFROM\n",no_lines);}
+schedule {printf("%d_tSCHEDULE\n",no_lines);}
+to {printf("%d_tTO\n",no_lines);}
+set {printf("%d_tSET\n",no_lines);}
+
+, {printf("%d_tCOMMA\n",no_lines);}
+\( {printf("%d_tLPR\n",no_lines);}
+\) {printf("%d_tRPR\n",no_lines);}
+\[ {printf("%d_tLBR\n",no_lines);}
+\] {printf("%d_tRBR\n",no_lines);}
+: {printf("%d_tCOLON\n",no_lines);}
+@ {printf("%d_tAT\n",no_lines);}
+
+{DIGIT}{2}\/{DIGIT}{2}\/{DIGIT}{4} |
+{DIGIT}{2}\-{DIGIT}{2}\-{DIGIT}{4} |
+{DIGIT}{2}\.{DIGIT}{2}\.{DIGIT}{4} {
+    char day[3];
+    char month[3];
+    char year[5];
+
+    char sep = yytext[2];
+
+    if(sep == '.') {
+        sscanf(yytext, "%2s.%2s.%4s", day, month, year);
+    }
+    else if (sep == '/') {
+        sscanf(yytext, "%2s/%2s/%4s", day, month, year);
+    }
+    else if (sep == '-') {
+        sscanf(yytext, "%2s-%2s-%4s", day, month, year);
+    }
+    printf("%d_tDATE_(Day_%s_Month_%s_Year_%s)\n",no_lines,day, month, year);
+}
+
+{DIGIT}{DIGIT}:{DIGIT}{DIGIT} {
+    char hour[3];
+    char min[3];
+    sscanf(yytext,"%2s:%2s", hour, min);
+    printf("%d_tTIME_(Hour_%s_Minute_%s)\n",no_lines,hour,min);
+}
+
+([A-Za-z0-9_\-](\.?[A-Za-z0-9_\-])*@(([A-Za-z0-9]+\-*[A-Za-z0-9])+)(\.(([A-Za-z0-9]+\-*[A-Za-z0-9])+)){1,2}) {printf("%d_tADDRESS_(%s)\n",no_lines,yytext);}
+[A-Za-z_][A-Za-z0-9_]* {printf("%d_tIDENT_(%s)\n",no_lines,yytext);}
+
+\"[^\"]*\" {
+    char* o_string = yytext;
+    char* f_string = (char *) malloc(sizeof(char) * (yyleng));
+    int i = 1;
+    int j = 0;
+    int string_nlines = 0;
+    for(; i < yyleng-1; i++) {
+        if(o_string[i] == '\n') {
+            string_nlines++;
+        }
+        f_string[j] = o_string[i];
+        j++;
+    }
+    printf("%d_tSTRING_(%s)\n",no_lines,f_string);
+    no_lines = no_lines + string_nlines;
+    free(f_string);
+    }
+
+{NEWLINE} {no_lines++;} 
+
+\/\/.*
+
+{ALL_WHITESPACE}
+. {printf("%d_ILLEGAL_CHARACTER_(%s)\n",no_lines,yytext);}
+%%
+
+int main() {
+    yylex();
+    return 0;
+}
